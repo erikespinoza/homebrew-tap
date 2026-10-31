@@ -7,14 +7,14 @@ class Huproxyclient < Formula
   on_macos do
     if Hardware::CPU.arm?
       url "https://github.com/erikespinoza/homebrew-tap/releases/download/huproxyclient-2026.10.02/huproxyclient-2026.10.02-darwin-arm64.tar.gz"
-      sha256 "fe157729d13fa8adff7d7faf5c4b0cc6a513407a59013cfd0ccf30a6b1b0ba33"
+      sha256 "8021e20fb2e751f7cffd314f823478b7586696ba395ead6d4808bdb29d5d881c"
     end
   end
 
   on_linux do
     if Hardware::CPU.intel?
       url "https://github.com/erikespinoza/homebrew-tap/releases/download/huproxyclient-2026.10.02/huproxyclient-2026.10.02-linux-amd64.tar.gz"
-      sha256 "32310ccd254375131bfd65c9302956f47230e3b5b21cd6bc9e53fd486a3a4934"
+      sha256 "2159d8b8936b04dfc6660dc1b8a92573a73dff2d0f54d85bc6efc3d1ee5a2ac2"
     end
   end
 
