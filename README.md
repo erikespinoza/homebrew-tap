@@ -38,6 +38,6 @@ brew upgrade keymaster huproxyclient wireproxy
 
 - **No Local Compilation**: Homebrew downloads pre-compiled native tarballs from GitHub Releases and extracts the executables directly to `$(brew --prefix)/bin`.
 - **Automated Tracking of Upstream**:
-  - GitHub Actions runs weekly (and can be triggered manually via `Actions` -> `Run workflow` with optional force build/update).
+  - GitHub Actions runs on staggered, off-peak weekly schedules (and can be triggered manually via `Actions` -> `Run workflow` with optional force build/update).
   - For `keymaster` and `huproxyclient`, workflows detect new commits on `master`, execute native builds on GitHub-hosted runners (`macos-latest` for Apple Silicon and `ubuntu-latest` for Linux), generate release archives, publish releases, and update the formulae in `main`.
   - For `wireproxy`, the updater workflow tracks upstream releases from `windtf/wireproxy`, extracts SHA-256 checksums from `checksums.txt`, and updates `Formula/wireproxy.rb` automatically.

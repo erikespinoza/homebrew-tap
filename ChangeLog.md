@@ -2,6 +2,14 @@
 
 All notable changes to the `erikespinoza/homebrew-tap` repository will be documented in this file.
 
+## [2026.10.30] - Stagger and Jitter Workflow Cron Schedules
+
+### Changed
+- **Staggered Cron Timing**: Jittered weekly workflow schedules away from the top-of-the-hour (`:00`) and Sunday midnight congestion to reduce shared runner queue delays and avoid runner stampedes:
+  - `rebuild-keymaster.yml`: Tuesday at 04:37 UTC (`37 4 * * 2`)
+  - `rebuild-huproxyclient.yml`: Thursday at 05:19 UTC (`19 5 * * 4`)
+  - `update-wireproxy.yml`: Saturday at 03:43 UTC (`43 3 * * 6`)
+
 ## [2026.10.30] - Add Wireproxy Formula & Upstream Release Updater
 
 ### Added

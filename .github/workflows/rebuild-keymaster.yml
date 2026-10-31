@@ -8,8 +8,8 @@ on:
         required: false
         default: 'false'
   schedule:
-    # Run weekly on Sunday at midnight UTC
-    - cron: '0 0 * * 0'
+    # Run weekly on Tuesday at 04:37 UTC (staggered off-peak)
+    - cron: '37 4 * * 2'
 
 permissions:
   contents: write
