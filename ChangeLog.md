@@ -2,6 +2,11 @@
 
 All notable changes to the `erikespinoza/homebrew-tap` repository will be documented in this file.
 
+## [2026.10.30] - Add AGENTS.md Operational Guidelines
+
+### Added
+- **`AGENTS.md`**: Persisted repository agent rules mandating off-peak, staggered cron schedules with arbitrary non-round minute jitter for shared CI/CD runner efficiency, concurrency serialization, and documentation lockstep synchronization.
+
 ## [2026.10.30] - Stagger and Jitter Workflow Cron Schedules
 
 ### Changed
