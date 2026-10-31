@@ -1,0 +1,177 @@
+name: Update Wireproxy
+
+on:
+  workflow_dispatch:
+    inputs:
+      force_update:
+        description: 'Force update even if version has not changed (true/false)'
+        required: false
+        default: 'false'
+  schedule:
+    # Run weekly on Sunday at 01:00 UTC
+    - cron: '0 1 * * 0'
+
+permissions:
+  contents: write
+
+# Serialize updates across workflows to prevent git push concurrency races
+concurrency:
+  group: tap-formula-update
+  cancel-in-progress: false
+
+jobs:
+  check-and-update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Homebrew Tap
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check upstream release
+        id: check
+        run: |
+          UPSTREAM_API="https://api.github.com/repos/windtf/wireproxy/releases/latest"
+          RESP=$(curl -s -H "Accept: application/vnd.github.v3+json" "$UPSTREAM_API")
+
+          TAG=$(python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('tag_name', ''))" <<< "$RESP")
+          if [ -z "$TAG" ] || [ "$TAG" = "None" ]; then
+            echo "Error fetching latest release tag from $UPSTREAM_API"
+            exit 1
+          fi
+
+          # Strip optional leading 'v'
+          VERSION="${TAG#v}"
+          echo "Latest upstream release tag: $TAG (version: $VERSION)"
+
+          CURRENT_VERSION=$(grep -E '^\s*version "' Formula/wireproxy.rb | head -1 | sed -E 's/.*version "([^"]+)".*/\1/')
+          echo "Current Formula version: $CURRENT_VERSION"
+
+          FORCE="${{ github.event.inputs.force_update }}"
+          if [ "$FORCE" = "true" ] || [ "$CURRENT_VERSION" != "$VERSION" ]; then
+            echo "should_update=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_update=false" >> $GITHUB_OUTPUT
+          fi
+
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Download checksums and update Formula
+        if: steps.check.outputs.should_update == 'true'
+        run: |
+          TAG="${{ steps.check.outputs.tag }}"
+          VERSION="${{ steps.check.outputs.version }}"
+
+          CHECKSUMS_URL="https://github.com/windtf/wireproxy/releases/download/${TAG}/checksums.txt"
+          echo "Fetching checksums from $CHECKSUMS_URL"
+          curl -sSL "$CHECKSUMS_URL" -o checksums.txt
+
+          python3 - << 'EOF' "$VERSION"
+          import sys, textwrap
+
+          version = sys.argv[1]
+
+          checksums = {}
+          with open("checksums.txt", "r") as f:
+              for line in f:
+                  parts = line.strip().split()
+                  if len(parts) >= 2:
+                      sha, filename = parts[0], parts[1]
+                      checksums[filename] = sha
+
+          darwin_arm64_sha = checksums.get("wireproxy_darwin_arm64.tar.gz")
+          darwin_amd64_sha = checksums.get("wireproxy_darwin_amd64.tar.gz")
+          linux_amd64_sha = checksums.get("wireproxy_linux_amd64.tar.gz")
+          linux_arm64_sha = checksums.get("wireproxy_linux_arm64.tar.gz")
+
+          missing = []
+          for name, val in [("darwin_arm64", darwin_arm64_sha),
+                            ("darwin_amd64", darwin_amd64_sha),
+                            ("linux_amd64", linux_amd64_sha),
+                            ("linux_arm64", linux_arm64_sha)]:
+              if not val:
+                  missing.append(name)
+
+          if missing:
+              sys.exit(f"Missing SHA256 checksums for: {', '.join(missing)}")
+
+          formula_template = textwrap.dedent("""\
+          class Wireproxy < Formula
+            desc "Wireguard client that exposes itself as a socks5/http proxy"
+            homepage "https://github.com/windtf/wireproxy"
+            version "{version}"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "https://github.com/windtf/wireproxy/releases/download/v{version}/wireproxy_darwin_arm64.tar.gz"
+                sha256 "{darwin_arm64_sha}"
+              end
+              if Hardware::CPU.intel?
+                url "https://github.com/windtf/wireproxy/releases/download/v{version}/wireproxy_darwin_amd64.tar.gz"
+                sha256 "{darwin_amd64_sha}"
+              end
+            end
+
+            on_linux do
+              if Hardware::CPU.intel?
+                url "https://github.com/windtf/wireproxy/releases/download/v{version}/wireproxy_linux_amd64.tar.gz"
+                sha256 "{linux_amd64_sha}"
+              end
+              if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
+                url "https://github.com/windtf/wireproxy/releases/download/v{version}/wireproxy_linux_arm64.tar.gz"
+                sha256 "{linux_arm64_sha}"
+              end
+            end
+
+            def install
+              bin.install "wireproxy"
+            end
+
+            test do
+              system "{bin_placeholder}/wireproxy", "--help"
+            end
+          end
+          """)
+
+          formula_content = formula_template.format(
+              version=version,
+              darwin_arm64_sha=darwin_arm64_sha,
+              darwin_amd64_sha=darwin_amd64_sha,
+              linux_amd64_sha=linux_amd64_sha,
+              linux_arm64_sha=linux_arm64_sha,
+              bin_placeholder="#{bin}"
+          )
+
+          with open("Formula/wireproxy.rb", "w") as f:
+              f.write(formula_content)
+          print("Successfully updated Formula/wireproxy.rb")
+          EOF
+
+          rm -f checksums.txt
+
+      - name: Commit and push updated Formula with bounded retry
+        if: steps.check.outputs.should_update == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/wireproxy.rb
+          if git diff --staged --quiet; then
+            echo "No changes in Formula/wireproxy.rb to commit."
+            exit 0
+          fi
+          git commit -m "chore(formula): update wireproxy to ${{ steps.check.outputs.version }}"
+
+          MAX_RETRIES=3
+          for i in $(seq 1 $MAX_RETRIES); do
+            echo "Attempt $i: Rebasing on remote main and pushing..."
+            if git pull --rebase origin main && git push origin main; then
+              echo "Successfully pushed formula update to main"
+              exit 0
+            fi
+            if [ "$i" -eq "$MAX_RETRIES" ]; then
+              echo "Failed to push to main after $MAX_RETRIES attempts"
+              exit 1
+            fi
+            sleep 2
+          done

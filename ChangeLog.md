@@ -2,6 +2,13 @@
 
 All notable changes to the `erikespinoza/homebrew-tap` repository will be documented in this file.
 
+## [2026.10.30] - Add Wireproxy Formula & Upstream Release Updater
+
+### Added
+- **`Formula/wireproxy.rb`**: Pre-built binary formula for `wireproxy` supporting macOS Apple Silicon (`darwin/arm64`), macOS Intel (`darwin/amd64`), Linux AMD64 (`linux/amd64`), and Linux ARM64 (`linux/arm64`), consuming official releases from `windtf/wireproxy`.
+- **`.github/workflows/update-wireproxy.yml`**: Scheduled weekly workflow (and manual dispatch) to track official GitHub releases from `windtf/wireproxy`, download `checksums.txt`, update `Formula/wireproxy.rb` with verified SHA-256 hashes, and commit with `tap-formula-update` concurrency control.
+- **`README.md`**: Updated documentation and installation commands for `wireproxy`.
+
 ## [2026.10.30] - Concurrency Control & Bounded Push Retries
 
 ### Added
