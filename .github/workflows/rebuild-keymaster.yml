@@ -101,6 +101,9 @@ jobs:
   publish-and-update-formula:
     needs: [check-commit, build]
     runs-on: ubuntu-latest
+    concurrency:
+      group: tap-formula-update
+      cancel-in-progress: false
     steps:
       - name: Checkout Tap Repository
         uses: actions/checkout@v4
@@ -157,7 +160,7 @@ jobs:
 
           # Update or add commit sha comment
           if "# commit: " in content:
-              content = re.sub(r'# commit: [a-f0-9]+', f'# commit: {commit_sha}', content)
+              content = re.sub(r'# commit: [^\n]+', f'# commit: {commit_sha}', content)
           else:
               content = f"# commit: {commit_sha}\n" + content
 
@@ -182,9 +185,27 @@ jobs:
           python3 update_formula.py "$VERSION" "$COMMIT_SHA" "$DARWIN_SHA" "$LINUX_SHA"
           rm update_formula.py
 
-      - name: Commit and push updated Formula
+      - name: Commit and push updated Formula with bounded retry
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Formula/keymaster.rb
-          git diff --quiet && git diff --staged --quiet || (git commit -m "chore(formula): update keymaster to ${{ needs.check-commit.outputs.version }}" && git push)
+          if git diff --staged --quiet; then
+            echo "No changes in Formula/keymaster.rb to commit."
+            exit 0
+          fi
+          git commit -m "chore(formula): update keymaster to ${{ needs.check-commit.outputs.version }}"
+
+          MAX_RETRIES=3
+          for i in $(seq 1 $MAX_RETRIES); do
+            echo "Attempt $i: Rebasing on remote main and pushing..."
+            if git pull --rebase origin main && git push origin main; then
+              echo "Successfully pushed formula update to main"
+              exit 0
+            fi
+            if [ "$i" -eq "$MAX_RETRIES" ]; then
+              echo "Failed to push to main after $MAX_RETRIES attempts"
+              exit 1
+            fi
+            sleep 2
+          done

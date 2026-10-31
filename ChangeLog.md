@@ -2,6 +2,12 @@
 
 All notable changes to the `erikespinoza/homebrew-tap` repository will be documented in this file.
 
+## [2026.10.30] - Concurrency Control & Bounded Push Retries
+
+### Added
+- **Job Concurrency Serialization**: Added `tap-formula-update` concurrency group with `cancel-in-progress: false` across workflows to queue parallel release update jobs cleanly.
+- **Bounded Push Retries**: Replaced direct `git push` with a bounded 3-attempt loop performing `git pull --rebase origin main` before pushing to ensure zero race-condition failures.
+
 ## [2026.10.30] - Commit SHA Tracking & Build Dependency Fixes
 
 ### Added
