@@ -1,0 +1,179 @@
+name: Rebuild Huproxyclient
+
+on:
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: 'Force build even if commit has not changed (true/false)'
+        required: false
+        default: 'false'
+  schedule:
+    # Run weekly on Sunday at 01:00 UTC
+    - cron: '0 1 * * 0'
+
+permissions:
+  contents: write
+
+jobs:
+  check-commit:
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.check.outputs.should_build }}
+      sha: ${{ steps.check.outputs.sha }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - name: Checkout Homebrew Tap
+        uses: actions/checkout@v4
+
+      - name: Check upstream commit and date
+        id: check
+        run: |
+          UPSTREAM_API="https://api.github.com/repos/erikespinoza/huproxy/commits/master"
+          RESP=$(curl -s -H "Accept: application/vnd.github.v3+json" "$UPSTREAM_API")
+          LATEST_SHA=$(echo "$RESP" | jq -r '.sha')
+          COMMIT_DATE=$(echo "$RESP" | jq -r '.commit.committer.date')
+          
+          # Form CalVer version: YYYY.MM.DD
+          VERSION=$(date -u -d "$COMMIT_DATE" +%Y.%m.%d)
+          echo "Latest SHA: $LATEST_SHA"
+          echo "Commit Date: $COMMIT_DATE"
+          echo "Version: $VERSION"
+
+          # Check current formula version
+          CURRENT_VERSION=$(grep -E '^\s*version "' Formula/huproxyclient.rb | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "Current Formula Version: $CURRENT_VERSION"
+
+          FORCE="${{ github.event.inputs.force_build }}"
+          if [ "$FORCE" = "true" ] || [ "$CURRENT_VERSION" != "$VERSION" ]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_build=false" >> $GITHUB_OUTPUT
+          fi
+          echo "sha=$LATEST_SHA" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+  build:
+    needs: check-commit
+    if: needs.check-commit.outputs.should_build == 'true'
+    strategy:
+      matrix:
+        include:
+          - runner: macos-latest
+            os: darwin
+            arch: arm64
+          - runner: ubuntu-latest
+            os: linux
+            arch: amd64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+
+      - name: Checkout huproxy
+        uses: actions/checkout@v4
+        with:
+          repository: erikespinoza/huproxy
+          ref: ${{ needs.check-commit.outputs.sha }}
+          path: huproxy-src
+
+      - name: Build huproxyclient binary
+        working-directory: huproxy-src
+        run: |
+          CGO_ENABLED=0 go build -trimpath -o huproxyclient ./cmd/huproxyclient
+          TAR_NAME="huproxyclient-${{ needs.check-commit.outputs.version }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz"
+          tar -czf "../$TAR_NAME" huproxyclient
+          cd ..
+          shasum -a 256 "$TAR_NAME" > "$TAR_NAME.sha256"
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: huproxyclient-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            huproxyclient-${{ needs.check-commit.outputs.version }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz*
+
+  publish-and-update-formula:
+    needs: [check-commit, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Tap Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Inspect artifacts
+        run: ls -la dist/
+
+      - name: Read checksums
+        id: checksums
+        run: |
+          VERSION="${{ needs.check-commit.outputs.version }}"
+          DARWIN_ARM64_SHA=$(cat dist/huproxyclient-${VERSION}-darwin-arm64.tar.gz.sha256 | awk '{print $1}')
+          LINUX_AMD64_SHA=$(cat dist/huproxyclient-${VERSION}-linux-amd64.tar.gz.sha256 | awk '{print $1}')
+          echo "darwin_arm64_sha=$DARWIN_ARM64_SHA" >> $GITHUB_OUTPUT
+          echo "linux_amd64_sha=$LINUX_AMD64_SHA" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "huproxyclient-${{ needs.check-commit.outputs.version }}"
+          name: "Huproxyclient ${{ needs.check-commit.outputs.version }}"
+          body: |
+            Automated build tracking erikespinoza/huproxy commit ${{ needs.check-commit.outputs.sha }}.
+            
+            ### Checksums (SHA-256)
+            - `huproxyclient-${{ needs.check-commit.outputs.version }}-darwin-arm64.tar.gz`: `${{ steps.checksums.outputs.darwin_arm64_sha }}`
+            - `huproxyclient-${{ needs.check-commit.outputs.version }}-linux-amd64.tar.gz`: `${{ steps.checksums.outputs.linux_amd64_sha }}`
+          files: |
+            dist/*.tar.gz
+            dist/*.sha256
+
+      - name: Update Formula
+        run: |
+          VERSION="${{ needs.check-commit.outputs.version }}"
+          DARWIN_SHA="${{ steps.checksums.outputs.darwin_arm64_sha }}"
+          LINUX_SHA="${{ steps.checksums.outputs.linux_amd64_sha }}"
+
+          cat << 'EOF' > update_formula.py
+          import sys, re
+
+          version, darwin_sha, linux_sha = sys.argv[1], sys.argv[2], sys.argv[3]
+          path = "Formula/huproxyclient.rb"
+          with open(path, "r") as f:
+              content = f.read()
+
+          content = re.sub(r'version "[^"]+"', f'version "{version}"', content, count=1)
+          content = re.sub(r'(url "https://github.com/erikespinoza/homebrew-tap/releases/download/huproxyclient-)[^/]+(/huproxyclient-)[^/]+(-darwin-arm64\.tar\.gz")',
+                           rf'\g<1>{version}\g<2>{version}\g<3>', content)
+          content = re.sub(r'(url "https://github.com/erikespinoza/homebrew-tap/releases/download/huproxyclient-)[^/]+(/huproxyclient-)[^/]+(-linux-amd64\.tar\.gz")',
+                           rf'\g<1>{version}\g<2>{version}\g<3>', content)
+
+          # Replace checksum in macos block
+          content = re.sub(r'(if Hardware::CPU\.arm\?\n\s+url [^\n]+\n\s+sha256 ")[^"]+(")',
+                           rf'\g<1>{darwin_sha}\g<2>', content)
+
+          # Replace checksum in linux block
+          content = re.sub(r'(if Hardware::CPU\.intel\?\n\s+url [^\n]+\n\s+sha256 ")[^"]+(")',
+                           rf'\g<1>{linux_sha}\g<2>', content)
+
+          with open(path, "w") as f:
+              f.write(content)
+          EOF
+
+          python3 update_formula.py "$VERSION" "$DARWIN_SHA" "$LINUX_SHA"
+          rm update_formula.py
+
+      - name: Commit and push updated Formula
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/huproxyclient.rb
+          git diff --quiet && git diff --staged --quiet || (git commit -m "chore(formula): update huproxyclient to ${{ needs.check-commit.outputs.version }}" && git push)
