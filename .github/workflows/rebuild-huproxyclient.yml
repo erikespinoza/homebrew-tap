@@ -39,12 +39,12 @@ jobs:
           echo "Commit Date: $COMMIT_DATE"
           echo "Version: $VERSION"
 
-          # Check current formula version
-          CURRENT_VERSION=$(grep -E '^\s*version "' Formula/huproxyclient.rb | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
-          echo "Current Formula Version: $CURRENT_VERSION"
+          # Extract recorded commit SHA from Formula
+          CURRENT_SHA=$(grep -E '^\s*# commit: ' Formula/huproxyclient.rb | head -1 | awk '{print $3}')
+          echo "Current Formula SHA: $CURRENT_SHA"
 
           FORCE="${{ github.event.inputs.force_build }}"
-          if [ "$FORCE" = "true" ] || [ "$CURRENT_VERSION" != "$VERSION" ]; then
+          if [ "$FORCE" = "true" ] || [ "$CURRENT_SHA" != "$LATEST_SHA" ]; then
             echo "should_build=true" >> $GITHUB_OUTPUT
           else
             echo "should_build=false" >> $GITHUB_OUTPUT
@@ -139,16 +139,23 @@ jobs:
       - name: Update Formula
         run: |
           VERSION="${{ needs.check-commit.outputs.version }}"
+          COMMIT_SHA="${{ needs.check-commit.outputs.sha }}"
           DARWIN_SHA="${{ steps.checksums.outputs.darwin_arm64_sha }}"
           LINUX_SHA="${{ steps.checksums.outputs.linux_amd64_sha }}"
 
           cat << 'EOF' > update_formula.py
           import sys, re
 
-          version, darwin_sha, linux_sha = sys.argv[1], sys.argv[2], sys.argv[3]
+          version, commit_sha, darwin_sha, linux_sha = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
           path = "Formula/huproxyclient.rb"
           with open(path, "r") as f:
               content = f.read()
+
+          # Update or add commit sha comment
+          if "# commit: " in content:
+              content = re.sub(r'# commit: [a-f0-9]+', f'# commit: {commit_sha}', content)
+          else:
+              content = f"# commit: {commit_sha}\n" + content
 
           content = re.sub(r'version "[^"]+"', f'version "{version}"', content, count=1)
           content = re.sub(r'(url "https://github.com/erikespinoza/homebrew-tap/releases/download/huproxyclient-)[^/]+(/huproxyclient-)[^/]+(-darwin-arm64\.tar\.gz")',
@@ -168,7 +175,7 @@ jobs:
               f.write(content)
           EOF
 
-          python3 update_formula.py "$VERSION" "$DARWIN_SHA" "$LINUX_SHA"
+          python3 update_formula.py "$VERSION" "$COMMIT_SHA" "$DARWIN_SHA" "$LINUX_SHA"
           rm update_formula.py
 
       - name: Commit and push updated Formula

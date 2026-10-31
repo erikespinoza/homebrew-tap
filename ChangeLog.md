@@ -2,6 +2,12 @@
 
 All notable changes to the `erikespinoza/homebrew-tap` repository will be documented in this file.
 
+## [2026.10.30] - Commit SHA Tracking & Build Dependency Fixes
+
+### Added
+- **Exact Commit SHA Tracking**: Formulae now track the upstream Git commit SHA via `# commit: <sha>`. Cron workflows query the GitHub API and only trigger rebuilds if the commit SHA has actually changed or if forced.
+- **Linux Build Dependencies**: Added `pkg-config`, `libudev-dev`, and `libpcsclite-dev` installation step on Linux runners in `rebuild-keymaster.yml` to resolve Cgo build requirements for smartcard and HID handling.
+
 ## [2026.10.30] - Initial Tap Scaffolding
 
 ### Added

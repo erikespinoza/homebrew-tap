@@ -1,3 +1,4 @@
+# commit: none
 class Huproxyclient < Formula
   desc "Client for huproxy, an HTTPS and WebSocket-based proxy"
   homepage "https://github.com/erikespinoza/huproxy"
