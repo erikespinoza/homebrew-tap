@@ -1,4 +1,4 @@
-# commit: none
+# commit: 9cb8b98e49be0ad163d1b0029fd8879a50a17593
 class Keymaster < Formula
   desc "Keymaster client for short-lived certificate management"
   homepage "https://github.com/Cloud-Foundations/keymaster"
@@ -7,14 +7,14 @@ class Keymaster < Formula
   on_macos do
     if Hardware::CPU.arm?
       url "https://github.com/erikespinoza/homebrew-tap/releases/download/keymaster-2026.10.26/keymaster-2026.10.26-darwin-arm64.tar.gz"
-      sha256 "65bb6af6601e7617e9a506aa150f506f9dfb500568255b5d4133b9952bde5550"
+      sha256 "ad5d2cded29e5308deaad1a4b00c79f9cbe6a84d9d931969ad3a2206798e702c"
     end
   end
 
   on_linux do
     if Hardware::CPU.intel?
       url "https://github.com/erikespinoza/homebrew-tap/releases/download/keymaster-2026.10.26/keymaster-2026.10.26-linux-amd64.tar.gz"
-      sha256 "57b51d8e20b1ae5d1b18d0e675dabe1091168db65f6220dd31e05a57efa6ad9e"
+      sha256 "673097e8910a61b2c3d17cbf96c88e68e59c865aaa3ca5dcf871f7093a950c37"
     end
   end
 
