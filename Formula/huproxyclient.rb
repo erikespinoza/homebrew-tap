@@ -1,4 +1,4 @@
-# commit: none
+# commit: afd48f23282f83e973704b451800e961a2dbcb71
 class Huproxyclient < Formula
   desc "Client for huproxy, an HTTPS and WebSocket-based proxy"
   homepage "https://github.com/erikespinoza/huproxy"
@@ -7,14 +7,14 @@ class Huproxyclient < Formula
   on_macos do
     if Hardware::CPU.arm?
       url "https://github.com/erikespinoza/homebrew-tap/releases/download/huproxyclient-2026.10.02/huproxyclient-2026.10.02-darwin-arm64.tar.gz"
-      sha256 "8021e20fb2e751f7cffd314f823478b7586696ba395ead6d4808bdb29d5d881c"
+      sha256 "0f16876705c2e942e565bfcd72999985f9177deea2109cc32c804519c9f1c90f"
     end
   end
 
   on_linux do
     if Hardware::CPU.intel?
       url "https://github.com/erikespinoza/homebrew-tap/releases/download/huproxyclient-2026.10.02/huproxyclient-2026.10.02-linux-amd64.tar.gz"
-      sha256 "2159d8b8936b04dfc6660dc1b8a92573a73dff2d0f54d85bc6efc3d1ee5a2ac2"
+      sha256 "73a812293f217499890ee876a1c85bd0740a91d2138ee3aa482be2362e5d7d00"
     end
   end
 
